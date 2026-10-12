@@ -131,10 +131,30 @@ directory it renders nothing. Web and Electron read the connected server's disk;
 the panel remains hidden on VS Code, hosted mobile and Capacitor mobile.
 
 Reads run through the background-network gate on mount, directory/runtime changes,
-window focus and explicit refresh. There is no idle timer. An aborted or obsolete
-request cannot publish after a scope change or unmount. A failed read shows
-Unavailable and removes the bar instead of displaying a full or empty disk.
-The bar uses warning color at 85% and error color at 95% unavailable capacity.
+window focus and explicit refresh. During work, existing directory-scoped Git
+refresh hints from completed file, shell and execution tools or file operations
+schedule one trailing capacity read. Bursts coalesce, with at most one activity
+read every 30 seconds. Other directories and hidden browser tabs are ignored.
+Hiding the panel or section cancels pending work and removes listeners.
+
+There is no polling interval, filesystem watcher, directory scan or shell process.
+Idle time produces no additional capacity requests. Each request uses the existing
+project-directory validation and one asynchronous `statfs` call. Work has a small
+bounded cost; this is not a claim of zero CPU, network or disk overhead. Unchanged
+successful values retain their state identity, and the last successful bar stays
+visible during a same-scope refresh. Runtime switches clear the previous reading.
+An aborted or obsolete request cannot publish after a scope change or unmount.
+A failed read shows Unavailable and removes the bar.
+
+All widget colors use live semantic CSS variables, including custom themes.
+The track uses `surface.subtle`, normal fill uses `surface.mutedForeground`, and
+warning/error fill uses `status.warning` at 85% and `status.error` at 95% unavailable
+capacity. Theme switching needs no capacity request. Tests check these variables
+in every shipped theme, burst request counts, idle time and hidden-state cleanup.
+
+Changes made outside OpenChamber without a corresponding activity hint are visible
+on the next focus, mount or manual refresh. Continuous disk monitoring is deliberately
+not provided because it would add idle traffic and background work.
 
 ### Subagent rows
 

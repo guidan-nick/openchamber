@@ -1,10 +1,13 @@
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test, jest } from 'bun:test';
 import React, { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { Window } from 'happy-dom';
 import { I18nProvider } from '@/lib/i18n';
 import { useUIStore } from '@/stores/useUIStore';
 import { formatDiskBytes } from './diskSpace';
+import { sessionEvents } from '@/lib/sessionEvents';
+import { CSSVariableGenerator } from '@/lib/theme/cssGenerator';
+import { themes } from '@/lib/theme/themes';
 
 let Section: typeof import('./WorkStatusDiskSpaceSection').WorkStatusDiskSpaceSection;
 const globals = ['window', 'document', 'navigator', 'Element', 'HTMLElement', 'localStorage', 'IS_REACT_ACT_ENVIRONMENT', 'fetch'] as const;
@@ -16,9 +19,9 @@ describe('disk space widget', () => {
   let previous: Array<readonly [typeof globals[number], PropertyDescriptor | undefined]>;
   let requests: Array<{ url: string; resolve: (response: Response) => void }>;
   const originalStore = useUIStore.getState();
-  const render = async (directory: string | null = '/repo', visible = true) => {
+  const render = async (directory: string | null = '/repo', visible = true, active = true) => {
     await act(async () => root.render(
-      <I18nProvider>{visible ? <Section key={directory} directory={directory} /> : null}</I18nProvider>,
+      <I18nProvider>{visible ? <Section key={directory} directory={directory} active={active} /> : null}</I18nProvider>,
     ));
   };
   const answer = async (index: number, body: { totalBytes?: number; availableBytes?: number }, status = 200) => {
@@ -49,6 +52,7 @@ describe('disk space widget', () => {
     // Settle controlled requests so the shared background gate releases slots.
     await act(async () => { for (const request of requests) request.resolve(Response.json({}, { status: 503 })); });
     useUIStore.setState(originalStore);
+    jest.useRealTimers();
     for (const [name, descriptor] of previous) {
       if (descriptor) Object.defineProperty(globalThis, name, descriptor);
       else Reflect.deleteProperty(globalThis, name);
@@ -96,6 +100,86 @@ describe('disk space widget', () => {
     await answer(1, { totalBytes: 100, availableBytes: 40 });
     await answer(0, { totalBytes: 100, availableBytes: 90 });
     expect(container.textContent).toContain('60% used');
+  });
+
+  test('clears a completed reading when switching runtime', async () => {
+    await render();
+    await answer(0, { totalBytes: 100, availableBytes: 40 });
+    await act(async () => window.dispatchEvent(new CustomEvent('openchamber:runtime-endpoint-changed')));
+    expect(container.textContent).toContain('Loading');
+    expect(container.querySelector('[role="meter"]')).toBeNull();
+    await answer(1, { totalBytes: 100, availableBytes: 80 });
+    expect(container.textContent).toContain('20% used');
+  });
+
+  test('coalesces activity reads and does no idle work', async () => {
+    jest.useFakeTimers();
+    await render();
+    await answer(0, { totalBytes: 100, availableBytes: 40 });
+    await act(async () => {
+      for (let i = 0; i < 100; i += 1) sessionEvents.requestGitRefresh({ directory: '/repo' });
+      jest.advanceTimersByTime(29_999);
+    });
+    expect(requests).toHaveLength(1);
+    await act(async () => jest.advanceTimersByTime(1));
+    expect(requests).toHaveLength(2);
+    expect(container.textContent).toContain('60% used');
+    await answer(1, { totalBytes: 100, availableBytes: 20 });
+    await act(async () => jest.advanceTimersByTime(300_000));
+    expect(requests).toHaveLength(2);
+    expect(container.textContent).toContain('80% used');
+  });
+
+  test('ignores other projects and cancels queued activity when the panel is hidden', async () => {
+    jest.useFakeTimers();
+    await render();
+    await answer(0, { totalBytes: 100, availableBytes: 40 });
+    await act(async () => {
+      sessionEvents.requestGitRefresh({ directory: '/other' });
+      jest.advanceTimersByTime(30_000);
+    });
+    expect(requests).toHaveLength(1);
+    await act(async () => sessionEvents.requestGitRefresh({ directory: '/repo' }));
+    await render('/repo', true, false);
+    await act(async () => {
+      jest.advanceTimersByTime(30_000);
+      window.dispatchEvent(new Event('focus'));
+      sessionEvents.requestGitRefresh({ directory: '/repo' });
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  test('hidden browser tabs ignore activity and cancel a queued read', async () => {
+    jest.useFakeTimers();
+    await render();
+    await answer(0, { totalBytes: 100, availableBytes: 40 });
+    await act(async () => {
+      sessionEvents.requestGitRefresh({ directory: '/repo' });
+      Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+      document.dispatchEvent(new Event('visibilitychange'));
+      jest.advanceTimersByTime(30_000);
+      sessionEvents.requestGitRefresh({ directory: '/repo' });
+      window.dispatchEvent(new Event('focus'));
+      jest.advanceTimersByTime(30_000);
+    });
+    expect(requests).toHaveLength(1);
+  });
+
+  test('uses live semantic variables defined by every shipped theme', async () => {
+    await render();
+    await answer(0, { totalBytes: 100, availableBytes: 40 });
+    const generator = new CSSVariableGenerator();
+    const fill = container.querySelector<HTMLElement>('[role="meter"] > div');
+    expect(fill?.style.backgroundColor).toBe('var(--surface-muted-foreground)');
+    for (const theme of themes) {
+      generator.apply(theme);
+      const css = document.getElementById('opencode-theme-variables')?.textContent;
+      for (const variable of ['--surface-muted-foreground:', '--surface-subtle:', '--status-warning:', '--status-error:']) {
+        expect(css).toContain(variable);
+      }
+      expect(fill?.style.backgroundColor).toBe('var(--surface-muted-foreground)');
+    }
+    expect(requests).toHaveLength(1);
   });
 
   test('disabled or directory-less widgets perform no reads and remove listeners', async () => {

@@ -208,7 +208,7 @@ export const WorkStatusPanel: React.FC<Props> = ({ sessionId, directory, visible
     mcp: <WorkStatusMcpSection directory={directory} />,
     pinned: <WorkStatusPinnedSection sessionId={sessionId} directory={directory} />,
     contextSources: <WorkStatusContextSection sessionId={sessionId} directory={directory} />,
-    diskSpace: <WorkStatusDiskSpaceSection key={directory} directory={directory} />,
+    diskSpace: <WorkStatusDiskSpaceSection key={directory} directory={directory} active={visible} />,
   } satisfies Record<Exclude<WorkStatusSectionId, 'session' | 'repository'>, React.ReactNode>;
 
   return (
