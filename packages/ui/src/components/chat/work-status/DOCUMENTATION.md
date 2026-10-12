@@ -101,7 +101,7 @@ and therefore displaces nothing.
 
 ## Data sources
 
-Everything is read from already-warm caches. The panel adds no aggregated
+Most sections read already-warm caches. The panel adds no aggregated
 endpoint; quota data refreshes through the shared fixed three-minute quota timer,
 which requests only providers enabled for this panel.
 
@@ -120,6 +120,21 @@ which requests only providers enabled for this panel.
 | MCP | `useMcpStore` | connect/disconnect reuses the dropdown's actions |
 | Pinned messages | `getContextObligatoryMessages` + `state.part`, else one `getSessionMessage` read | see below |
 | Todos | live `state.todo[sessionId]`, persisted fallback | live channel wins |
+| Disk space | `/api/fs/disk-space` for the panel's directory | server filesystem capacity, available bytes exclude OS-reserved blocks |
+
+### Disk space
+
+Disk space shows a used-capacity bar with available and total bytes. It is enabled
+and expanded by default, and uses the existing section visibility, order and
+expansion settings. Hiding it unmounts its request owner. Without a project
+directory it renders nothing. Web and Electron read the connected server's disk;
+the panel remains hidden on VS Code, hosted mobile and Capacitor mobile.
+
+Reads run through the background-network gate on mount, directory/runtime changes,
+window focus and explicit refresh. There is no idle timer. An aborted or obsolete
+request cannot publish after a scope change or unmount. A failed read shows
+Unavailable and removes the bar instead of displaying a full or empty disk.
+The bar uses warning color at 85% and error color at 95% unavailable capacity.
 
 ### Subagent rows
 
@@ -290,7 +305,7 @@ The default order is by durability:
    is open. Usage sits here rather than lower down because a spent quota stops the
    work outright;
 2. **Subagents** — what is happening right now;
-3. **MCP**, **Pinned messages**, **Context sources** — supporting material.
+3. **MCP**, **Pinned messages**, **Context sources**, **Disk space** as supporting readouts.
 
 The sections dialog has drag handles for changing this order, including hidden
 sections. A drop updates the panel immediately. `workStatusSectionOrder` is a

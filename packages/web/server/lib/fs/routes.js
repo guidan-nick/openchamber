@@ -797,6 +797,30 @@ export const registerFsRoutes = (app, dependencies) => {
     }
   });
 
+  app.get('/api/fs/disk-space', async (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    try {
+      const project = await resolveProjectDirectory(req);
+      if (!project.directory) {
+        return res.status(400).json({ error: project.error || 'Active workspace is required' });
+      }
+      const stats = await fsPromises.statfs(project.directory);
+      const totalBytes = stats.blocks * stats.bsize;
+      // bavail excludes blocks reserved for the OS or privileged users.
+      const availableBytes = Math.max(0, stats.bavail * stats.bsize);
+      if (!Number.isFinite(totalBytes) || totalBytes <= 0
+        || !Number.isFinite(availableBytes) || availableBytes > totalBytes) {
+        return res.status(503).json({ error: 'Disk space is unavailable' });
+      }
+      return res.json({ totalBytes, availableBytes });
+    } catch (error) {
+      if (isOsPermissionError(error)) {
+        return sendOsPermissionDenied(res, 'Access to disk space denied');
+      }
+      return res.status(503).json({ error: 'Disk space is unavailable' });
+    }
+  });
+
   app.post('/api/fs/mkdir', async (req, res) => {
     try {
       const { path: dirPath, allowOutsideWorkspace } = req.body ?? {};

@@ -89,6 +89,23 @@ describe('settings registry', () => {
     }
   });
 
+  test('round-trips disk-space visibility through profile settings', () => {
+    const original = useUIStore.getState();
+    try {
+      useUIStore.getState().setWorkStatusSectionVisible('diskSpace', false);
+      const saved = parseSettingsDocument(JSON.parse(JSON.stringify(readAutoSaveSnapshot())));
+      expect(saved?.workStatusHiddenSections).toContain('diskSpace');
+      useUIStore.getState().setWorkStatusSectionVisible('diskSpace', true);
+      if (!saved) throw new Error('Expected valid settings');
+      applySettingsToStores(saved);
+      expect(useUIStore.getState().workStatusHiddenSections).toContain('diskSpace');
+      useUIStore.getState().setWorkStatusSectionVisible('diskSpace', true);
+      expect(readAutoSaveSnapshot().workStatusHiddenSections).not.toContain('diskSpace');
+    } finally {
+      useUIStore.setState(original);
+    }
+  });
+
   test('restores section order from the actual local persisted projection', async () => {
     const options = useUIStore.persist.getOptions();
     const original = useUIStore.getState();

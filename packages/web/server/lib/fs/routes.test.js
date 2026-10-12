@@ -11,6 +11,74 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mintOutsideFileGrant, registerFsRoutes } from './routes.js';
 import { createProjectDirectoryRuntime } from '../opencode/project-directory-runtime.js';
 
+describe('disk space route', () => {
+  const register = (statfs, project = { directory: '/project' }) => {
+    const registry = createRouteRegistry();
+    registerFsRoutes(registry.app, {
+      os: { homedir: () => '/home/user' }, path,
+      fsPromises: { realpath: async (value) => value, statfs },
+      resolveProjectDirectory: async () => project,
+      normalizeDirectoryPath: (value) => value,
+      openchamberUserConfigRoot: '/config',
+    });
+    return registry.getRoute('GET', '/api/fs/disk-space');
+  };
+
+  it('reads the validated project filesystem and excludes reserved blocks', async () => {
+    const statfs = vi.fn(async () => ({ bsize: 4096, blocks: 100, bfree: 30, bavail: 20 }));
+    const response = createMockResponse();
+    await register(statfs)({}, response);
+    expect(statfs).toHaveBeenCalledExactlyOnceWith('/project');
+    expect(response.body).toEqual({ totalBytes: 409600, availableBytes: 81920 });
+    expect(response.getHeader('Cache-Control')).toBe('no-store');
+  });
+
+  it('does not touch a filesystem when project validation fails', async () => {
+    const statfs = vi.fn();
+    const response = createMockResponse();
+    await register(statfs, { directory: null, error: 'Directory not found' })({}, response);
+    expect(response.statusCode).toBe(400);
+    expect(statfs).not.toHaveBeenCalled();
+  });
+
+  it('reports a full disk including negative unprivileged availability', async () => {
+    for (const bavail of [0, -1]) {
+      const response = createMockResponse();
+      await register(async () => ({ blocks: 100, bsize: 1, bavail }))({}, response);
+      expect(response.body).toEqual({ totalBytes: 100, availableBytes: 0 });
+    }
+  });
+
+  it('keeps invalid and failed reads distinct from a full disk', async () => {
+    for (const stats of [
+      { blocks: 0, bsize: 4096, bavail: 0 },
+      { blocks: 100, bsize: 1, bavail: 101 },
+      { blocks: Infinity, bsize: 1, bavail: 0 },
+      { blocks: 100, bsize: 1, bavail: NaN },
+    ]) {
+      const response = createMockResponse();
+      await register(async () => stats)({}, response);
+      expect(response.statusCode).toBe(503);
+      expect(response.body).not.toHaveProperty('availableBytes');
+    }
+    for (const [code, status] of [['EIO', 503], ['EACCES', 403], ['EPERM', 403]]) {
+      const response = createMockResponse();
+      await register(async () => { throw Object.assign(new Error('private path'), { code }); })({}, response);
+      expect(response.statusCode).toBe(status);
+      expect(JSON.stringify(response.body)).not.toContain('private path');
+    }
+  });
+
+  it('returns the real filesystem capacity on this host', async () => {
+    const response = createMockResponse();
+    await register(nativeFs.statfs, { directory: process.cwd() })({}, response);
+    expect(response.statusCode).toBe(200);
+    expect(response.body.totalBytes).toBeGreaterThan(0);
+    expect(response.body.availableBytes).toBeGreaterThanOrEqual(0);
+    expect(response.body.availableBytes).toBeLessThanOrEqual(response.body.totalBytes);
+  });
+});
+
 const createRouteRegistry = () => {
   const routes = new Map();
   return {

@@ -12,6 +12,7 @@ import { WorkStatusGoalRow } from './WorkStatusGoalRow';
 import { WorkStatusPrimaryGroup } from './WorkStatusPrimaryGroup';
 import { WorkStatusUsageSection } from './WorkStatusUsageSection';
 import { WorkStatusTelemetrySection } from './WorkStatusTelemetrySection';
+import { WorkStatusDiskSpaceSection } from './WorkStatusDiskSpaceSection';
 import { WorkStatusSubagentsSection } from './WorkStatusSubagentsSection';
 import { WorkStatusMcpSection } from './WorkStatusMcpSection';
 import { WorkStatusPinnedSection } from './WorkStatusPinnedSection';
@@ -207,6 +208,7 @@ export const WorkStatusPanel: React.FC<Props> = ({ sessionId, directory, visible
     mcp: <WorkStatusMcpSection directory={directory} />,
     pinned: <WorkStatusPinnedSection sessionId={sessionId} directory={directory} />,
     contextSources: <WorkStatusContextSection sessionId={sessionId} directory={directory} />,
+    diskSpace: <WorkStatusDiskSpaceSection key={directory} directory={directory} />,
   } satisfies Record<Exclude<WorkStatusSectionId, 'session' | 'repository'>, React.ReactNode>;
 
   return (

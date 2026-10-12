@@ -468,6 +468,10 @@ const handleLocalApiRequest = async (input: RequestInfo | URL, url: URL, init: R
     return unsupportedWebRouteResponse('Nested git repository discovery');
   }
 
+  if (normalizedPathname === '/api/fs/disk-space') {
+    return unsupportedWebRouteResponse('Disk space');
+  }
+
   if (normalizedPathname === '/api/sessions/snapshot' && method === 'GET') {
     const activity = await sendBridgeMessage<Record<string, { type: 'idle' | 'busy' | 'cooldown' }>>('api:session-activity:get')
       .catch(() => ({}));

@@ -11,6 +11,7 @@ Own filesystem API behavior for the web server runtime, including workspace-boun
 - `registerFsRoutes(app, dependencies)` from `routes.js`
   - Registers all filesystem routes:
     - `GET /api/fs/home`
+    - `GET /api/fs/disk-space?directory=...` returns `{ totalBytes, availableBytes }` for the validated project directory's filesystem using `statfs`. Available bytes exclude OS-reserved blocks and clamp negative availability to zero. Responses are not cached. Invalid project context returns 400, permission failures return 403, and failed or invalid capacity reads return 503. VS Code explicitly returns 501.
     - `POST /api/fs/mkdir`
     - `GET /api/fs/read`
     - `GET /api/fs/raw`
