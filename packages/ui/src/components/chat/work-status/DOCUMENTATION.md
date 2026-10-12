@@ -140,9 +140,11 @@ Hiding the panel or section cancels pending work and removes listeners.
 There is no polling interval, filesystem watcher, directory scan or shell process.
 Idle time produces no additional capacity requests. Each request uses the existing
 project-directory validation and one asynchronous `statfs` call. Work has a small
-bounded cost; this is not a claim of zero CPU, network or disk overhead. Unchanged
-successful values retain their state identity, and the last successful bar stays
-visible during a same-scope refresh. Runtime switches clear the previous reading.
+bounded cost; this is not a claim of zero CPU, network or disk overhead. The last
+successful bar stays visible during a same-scope refresh. The refresh icon rotates
+only while a read is pending and the panel is visible; reduced-motion preferences
+disable the rotation. The button stays disabled until that read succeeds or fails.
+This transform-only animation adds no requests or timers. Runtime switches clear the previous reading.
 An aborted or obsolete request cannot publish after a scope change or unmount.
 A failed read shows Unavailable and removes the bar.
 

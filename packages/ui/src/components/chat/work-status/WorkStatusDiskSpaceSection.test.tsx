@@ -85,6 +85,30 @@ describe('disk space widget', () => {
     expect(container.querySelector('[role="meter"]')).toBeNull();
   });
 
+  test('animates only pending reads and preserves the bar during refresh', async () => {
+    await render();
+    const button = () => container.querySelector<HTMLButtonElement>('[aria-label="Refresh disk space"]');
+    const icon = () => button()?.querySelector('svg');
+    expect(button()?.disabled).toBe(true);
+    expect(icon()?.classList.contains('animate-spin')).toBe(true);
+    expect(icon()?.classList.contains('motion-reduce:animate-none')).toBe(true);
+    await answer(0, { totalBytes: 100, availableBytes: 40 });
+    expect(button()?.disabled).toBe(false);
+    expect(icon()?.classList.contains('animate-spin')).toBe(false);
+    await act(async () => button()?.click());
+    expect(button()?.getAttribute('aria-busy')).toBe('true');
+    expect(icon()?.classList.contains('animate-spin')).toBe(true);
+    expect(container.textContent).toContain('60% used');
+    expect(container.querySelector('[role="meter"]')).not.toBeNull();
+    await answer(1, {}, 503);
+    expect(button()?.disabled).toBe(false);
+    expect(icon()?.classList.contains('animate-spin')).toBe(false);
+    expect(container.textContent).toContain('Unavailable');
+    await act(async () => button()?.click());
+    await render('/repo', true, false);
+    expect(icon()?.classList.contains('animate-spin')).toBe(false);
+  });
+
   test('discards a late read after project change', async () => {
     await render('/old');
     await render('/new');

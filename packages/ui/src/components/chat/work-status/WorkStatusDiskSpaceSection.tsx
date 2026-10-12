@@ -6,11 +6,12 @@ import { runBackgroundNetworkTask } from '@/lib/background-network';
 import { subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import { normalizePath } from '@/lib/pathNormalization';
 import { sessionEvents } from '@/lib/sessionEvents';
+import { cn } from '@/lib/utils';
 import { WorkStatusCollapsibleSection } from './WorkStatusPrimitives';
 import { useReportWorkStatusPresence } from './presenceContext';
 import { formatDiskBytes, readDiskSpace, type DiskSpace } from './diskSpace';
 
-type Reading = { status: 'loading' } | { status: 'unavailable' } | { status: 'ready'; data: DiskSpace };
+type Reading = { status: 'loading' } | { status: 'unavailable' } | { status: 'ready' | 'refreshing'; data: DiskSpace };
 
 const ACTIVITY_REFRESH_WINDOW_MS = 30_000;
 
@@ -33,17 +34,14 @@ export const WorkStatusDiskSpaceSection: React.FC<{ directory: string | null; ac
       controller = request;
       lastReadAt = Date.now();
       // Keep a successful reading on screen during a background refresh.
-      setReading((current) => current.status === 'ready' ? current : { status: 'loading' });
+      setReading((current) => current.status === 'ready' || current.status === 'refreshing'
+        ? { status: 'refreshing', data: current.data }
+        : { status: 'loading' });
       void runBackgroundNetworkTask(async () => {
         if (request.signal.aborted) return;
         try {
           const data = await readDiskSpace(directory, request.signal);
-          if (!request.signal.aborted) setReading((current) =>
-            current.status === 'ready'
-            && current.data.totalBytes === data.totalBytes
-            && current.data.availableBytes === data.availableBytes
-              ? current
-              : { status: 'ready', data });
+          if (!request.signal.aborted) setReading({ status: 'ready', data });
         } catch {
           if (!request.signal.aborted) setReading({ status: 'unavailable' });
         }
@@ -87,7 +85,8 @@ export const WorkStatusDiskSpaceSection: React.FC<{ directory: string | null; ac
   }, [directory, active]);
 
   if (!directory) return null;
-  const data = reading.status === 'ready' ? reading.data : null;
+  const data = reading.status === 'ready' || reading.status === 'refreshing' ? reading.data : null;
+  const isRefreshing = reading.status === 'loading' || reading.status === 'refreshing';
   const usedPercent = data ? (1 - data.availableBytes / data.totalBytes) * 100 : 0;
   const usedLabel = t('chat.workStatus.diskSpace.used', {
     percent: new Intl.NumberFormat(locale, { maximumFractionDigits: 0 }).format(usedPercent),
@@ -110,9 +109,10 @@ export const WorkStatusDiskSpaceSection: React.FC<{ directory: string | null; ac
           className="size-6 shrink-0 text-muted-foreground"
           onClick={() => refreshRef.current()}
           aria-label={t('chat.workStatus.diskSpace.refresh')}
-          disabled={reading.status === 'loading'}
+          disabled={isRefreshing}
+          aria-busy={isRefreshing}
         >
-          <Icon name="refresh" className="size-3.5" />
+          <Icon name="refresh" className={cn('size-3.5', active && isRefreshing && 'animate-spin motion-reduce:animate-none')} />
         </Button>
       )}
     >
